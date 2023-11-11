@@ -50,7 +50,7 @@ def create_customer(woocommerce_customer, woocommerce_customer_list):
             "sync_with_woocommerce": 0,
             "customer_group": woocommerce_settings.customer_group,
             "territory": territory,
-            "customer_type": _("Individual")
+            "customer_type": _("P")
         })
         customer.flags.ignore_mandatory = True
         customer.insert()

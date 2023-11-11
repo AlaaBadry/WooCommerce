@@ -8,7 +8,7 @@ from frappe.utils import flt, nowdate, cint
 from .woocommerce_requests import get_request, get_woocommerce_orders, get_woocommerce_tax, get_woocommerce_customer, put_request
 from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note, make_sales_invoice
 import requests.exceptions
-import base64, requests, datetime, os
+import base64, requests, datetime, os, json
 
 
 def sync_orders():
@@ -131,7 +131,7 @@ def create_new_customer_of_guest(woocommerce_order):
             "sync_with_woocommerce": 0,
             "customer_group": woocommerce_settings.customer_group,
             "territory": frappe.utils.nestedset.get_root_of("Territory"),
-            "customer_type": _("Individual")
+            "customer_type": _("P")
         })
         customer.flags.ignore_mandatory = True
         customer.insert()
@@ -207,7 +207,7 @@ def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
             "company": woocommerce_settings.company,
             "selling_price_list": woocommerce_settings.price_list,
             "ignore_pricing_rule": 1,
-            "items": get_order_items(woocommerce_order.get("line_items"), woocommerce_settings),
+            "items": get_order_items(woocommerce_order.get("line_items"),woocommerce_order, woocommerce_settings),
             "taxes": get_order_taxes(woocommerce_order, woocommerce_settings),
             # disabled discount as WooCommerce will send this both in the item rate and as discount
             #"apply_discount_on": "Net Total",
@@ -216,11 +216,15 @@ def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
             "taxes_and_charges": tax_rules,
             "customer_address": billing_address,
             "shipping_address_name": shipping_address,
-            "posting_date": woocommerce_order.get("date_created")[:10]          # pull posting date from WooCommerce
+            "posting_date": nowdate()          # pull posting date from WooCommerce
         })
-
+        # so = json.loads(so)
+        # so = json.dumps(so)
+        # frappe.log_error(message=type(so)(
+        #         ), title=f'Invoice document submission [{so}] - Error')
+        # make_woocommerce_log(title="create sales order", status="Success", method="create_sales_order",
+        #     message= "create sales_order",request_data=so, exception=False)
         so.flags.ignore_mandatory = True
-
         # alle orders in ERP = submitted
         so.save(ignore_permissions=True)
         so.submit()
@@ -244,11 +248,11 @@ def create_sales_order(woocommerce_order, woocommerce_settings, company=None):
 
 def get_customer_address_from_order(type, woocommerce_order, customer):
     address_record = woocommerce_order[type.lower()]
-    address_name = frappe.db.get_value("Address", {"woocommerce_address_id": type, "address_line1": address_record.get("address_1"), "woocommerce_company_name": address_record.get("company") or ''}, "name")
+    address_name = frappe.db.get_value("Address", {"woocommerce_address_id": type, "address_line1": address_record.get("address_1")}, "name")
     if not address_name:
         country = get_country_name(address_record.get("country"))
         if not frappe.db.exists("Country", country):
-            country = "Switzerland"
+            country = "Egypt"
         try :
             address_name = frappe.get_doc({
                 "doctype": "Address",
@@ -273,7 +277,7 @@ def get_customer_address_from_order(type, woocommerce_order, customer):
 
         except Exception as e:
             make_woocommerce_log(title=e, status="Error", method="create_customer_address", message=frappe.get_traceback(),
-                    request_data=woocommerce_customer, exception=True)
+                    request_data=customer, exception=True)
 
     return address_name
 
@@ -324,7 +328,7 @@ def get_fulfillment_items(dn_items, fulfillment_items, woocommerce_settings):
     #discounted_amount = flt(order.get("discount_total") or 0)
     #return discounted_amount
 
-def get_order_items(order_items, woocommerce_settings):
+def get_order_items(order_items, woocommerce_order, woocommerce_settings):
     items = []
     for woocommerce_item in order_items:
         item_code = get_item_code(woocommerce_item)
@@ -332,6 +336,7 @@ def get_order_items(order_items, woocommerce_settings):
             "item_code": item_code,
             "rate": woocommerce_item.get("price"),
             "delivery_date": nowdate(),
+            # "delivery_date": woocommerce_order.get("date_created")[:10],
             "qty": woocommerce_item.get("quantity"),
             "warehouse": woocommerce_settings.warehouse
         })
@@ -374,6 +379,8 @@ def get_order_taxes(woocommerce_order, woocommerce_settings):
         #     "included_in_print_rate": 1 if woocommerce_order.get("prices_include_tax") else 0,
         #     "cost_center": woocommerce_settings.cost_center
         # })
+    # make_woocommerce_log(title='Order Test', status="Error", method="create_new_customer_of_guest", message=woocommerce_order.get("id"),
+    #             request_data=woocommerce_order, exception=True)
     taxes = update_taxes_with_fee_lines(taxes, woocommerce_order.get("fee_lines"), woocommerce_settings)
     taxes = update_taxes_with_shipping_lines(taxes, woocommerce_order.get("shipping_lines"), woocommerce_settings)
 
@@ -408,10 +415,7 @@ def update_taxes_with_shipping_lines(taxes, shipping_lines, woocommerce_settings
 
 def get_shipping_account_head(shipping):
         shipping_title = shipping.get("method_title").encode("utf-8")
-
-        shipping_account =  frappe.db.get_value("woocommerce Tax Account", \
-                {"parent": "WooCommerce Config", "woocommerce_tax": shipping_title}, "tax_account")
-
+        shipping_account =  frappe.db.get_value("woocommerce Tax Account", {"parent": "WooCommerce Config", "woocommerce_tax": 'Flat rate'}, "tax_account")
         if not shipping_account:
                 frappe.throw("Tax Account not specified for woocommerce shipping method  {0}".format(shipping.get("method_title")))
 
@@ -422,7 +426,7 @@ def get_tax_account_head(tax):
     tax_title = tax.get("name").encode("utf-8") or tax.get("method_title").encode("utf-8")
 
     tax_account =  frappe.db.get_value("woocommerce Tax Account", \
-        {"parent": "WooCommerce Config", "woocommerce_tax": tax_title}, "tax_account")
+        {"parent": "WooCommerce Config", "woocommerce_tax": "Tax"}, "tax_account")
 
     if not tax_account:
         frappe.throw("Tax Account not specified for woocommerce Tax {0}".format(tax.get("name")))

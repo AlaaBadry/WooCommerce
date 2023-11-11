@@ -32,7 +32,7 @@ fixtures = ["Custom Field"]
 
 # website user home page (by Role)
 # role_home_page = {
-#	"Role": "home_page"
+# 	"Role": "home_page"
 # }
 
 # Generators
@@ -70,19 +70,19 @@ after_install = "woocommerceconnector.after_install.create_weight_uom"
 # Hook on document methods and events
 
 doc_events = {
-	"Bin": {
-		"on_update": "woocommerceconnector.sync_products.trigger_update_item_stock"
-	}
+    "Bin": {
+        "on_update": "woocommerceconnector.sync_products.trigger_update_item_stock"
+    },
+    "ToDo": {
+        "validate": "woocommerceconnector.sync_products.update_item_stock_qty",
+        # "validate": "woocommerceconnector.test_update.on_update",
+    },
 }
 
 # Scheduled Tasks
 # ---------------
 
-scheduler_events = {
-	"hourly": [
-		"woocommerceconnector.api.check_hourly_sync"
-	]
-}
+scheduler_events = {"hourly": ["woocommerceconnector.api.check_hourly_sync"]}
 
 # Testing
 # -------
@@ -95,4 +95,3 @@ scheduler_events = {
 # override_whitelisted_methods = {
 # 	"frappe.desk.doctype.event.event.get_events": "woocommerceconnector.event.get_events"
 # }
-
