@@ -10,10 +10,15 @@ def sync_customers():
     sync_woocommerce_customers(woocommerce_customer_list)
     frappe.local.form_dict.count_dict["customers"] = len(woocommerce_customer_list)
 
+
 def sync_woocommerce_customers(woocommerce_customer_list):
     for woocommerce_customer in get_woocommerce_customers():
+        make_woocommerce_log(title="test frappe local", status="Error", method="sync_customer",message= "customer without address found",request_data=woocommerce_customer, exception=False)    
         # import new customer or update existing customer
+        exist_customers=frappe.db.get_value("Customer", {"woocommerce_customer_id": woocommerce_customer.get('id')}, "name")
         if not frappe.db.get_value("Customer", {"woocommerce_customer_id": woocommerce_customer.get('id')}, "name"):
+            make_woocommerce_log(title="test frappe local", status="Error", method="sync_customer",message= "get exist cus",request_data=exist_customers, exception=False)    
+
             #only synch customers with address
             if woocommerce_customer.get("billing").get("address_1") != "" and woocommerce_customer.get("shipping").get("address_1") != "":
                 create_customer(woocommerce_customer, woocommerce_customer_list)
